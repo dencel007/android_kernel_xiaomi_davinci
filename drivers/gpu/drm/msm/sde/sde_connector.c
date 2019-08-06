@@ -1854,7 +1854,7 @@ static irqreturn_t esd_err_irq_handle(int irq, void *data)
 		event.length = sizeof(bool);
 		msm_mode_object_event_notify(&c_conn->base.base,
 			c_conn->base.dev, &event, (u8 *)&c_conn->panel_dead);
-		sde_encoder_display_failure_notification(c_conn->encoder);
+		sde_encoder_display_failure_notification(c_conn->encoder, false);
 	}
 	return IRQ_HANDLED;
 }
