@@ -289,13 +289,11 @@ static int unregister_gadget(struct gadget_info *gi)
 		return -ENODEV;
 
 	gi->unbinding = true;
-
 	ret = usb_gadget_unregister_driver(&gi->composite.gadget_driver);
 	if (ret)
 		return ret;
 
 	gi->unbinding = false;
-
 	kfree(gi->composite.gadget_driver.udc_name);
 	gi->composite.gadget_driver.udc_name = NULL;
 	return 0;
@@ -332,6 +330,7 @@ static ssize_t gadget_dev_desc_UDC_store(struct config_item *item,
 			gi->composite.gadget_driver.udc_name = NULL;
 			goto err;
 		}
+		schedule_work(&gi->work);
 	}
 	mutex_unlock(&gi->lock);
 	return len;

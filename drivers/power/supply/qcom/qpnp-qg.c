@@ -309,9 +309,10 @@ static int qg_process_fifo(struct qpnp_qg *chip, u32 fifo_length)
 
 	/*
 	 * If there is pending data from suspend, append the new FIFO
-	 * data to it.
+	 * data to it. Only do this if we can accomadate 8 FIFOs
 	 */
-	if (chip->suspend_data) {
+	if (chip->suspend_data &&
+		(chip->kdata.fifo_length < (MAX_FIFO_LENGTH / 2))) {
 		j = chip->kdata.fifo_length; /* append the data */
 		chip->suspend_data = false;
 		qg_dbg(chip, QG_DEBUG_FIFO,
@@ -380,7 +381,7 @@ static int qg_process_accumulator(struct qpnp_qg *chip)
 		return rc;
 	}
 
-	if (!count) {
+	if (!count || count < 10) { /* Ignore small accumulator data */
 		pr_debug("No ACCUMULATOR data!\n");
 		return 0;
 	}
@@ -412,6 +413,8 @@ static int qg_process_accumulator(struct qpnp_qg *chip)
 	chip->kdata.fifo[index].interval = sample_interval;
 	chip->kdata.fifo[index].count = count;
 	chip->kdata.fifo_length++;
+	if (chip->kdata.fifo_length == MAX_FIFO_LENGTH)
+		chip->kdata.fifo_length = MAX_FIFO_LENGTH - 1;
 
 	if (chip->kdata.fifo_length == 1)	/* Only accumulator data */
 		chip->kdata.seq_no = chip->seq_no++ % U32_MAX;
@@ -1227,6 +1230,7 @@ static irqreturn_t qg_good_ocv_handler(int irq, void *data)
 	u8 status = 0;
 	u32 ocv_uv = 0, ocv_raw = 0;
 	struct qpnp_qg *chip = data;
+	unsigned long rtc_sec = 0;
 
 	qg_dbg(chip, QG_DEBUG_IRQ, "IRQ triggered\n");
 
@@ -1247,6 +1251,8 @@ static irqreturn_t qg_good_ocv_handler(int irq, void *data)
 		goto done;
 	}
 
+	get_rtc_time(&rtc_sec);
+	chip->kdata.fifo_time = (u32)rtc_sec;
 	chip->kdata.param[QG_GOOD_OCV_UV].data = ocv_uv;
 	chip->kdata.param[QG_GOOD_OCV_UV].valid = true;
 
@@ -2924,11 +2930,13 @@ use_pon_ocv:
 			goto done;
 		}
 
-		if ((full_soc > cutoff_soc) && (pon_soc > cutoff_soc))
+		if ((full_soc > cutoff_soc) && (pon_soc > cutoff_soc)) {
 			calcualte_soc = DIV_ROUND_UP(((pon_soc - cutoff_soc) * 100),
 						(full_soc - cutoff_soc));
-		else
+ 			calcualte_soc = CAP(0, 100, calcualte_soc);
+		} else {
 			calcualte_soc = pon_soc;
+ 		}
 
 //	}
 
@@ -3811,6 +3819,7 @@ static int process_resume(struct qpnp_qg *chip)
 	u8 status2 = 0, rt_status = 0;
 	u32 ocv_uv = 0, ocv_raw = 0;
 	int rc;
+	unsigned long rtc_sec = 0;
 
 	/* skip if profile is not loaded */
 	if (!chip->profile_loaded)
@@ -3831,6 +3840,8 @@ static int process_resume(struct qpnp_qg *chip)
 
 		 /* Clear suspend data as there has been a GOOD OCV */
 		memset(&chip->kdata, 0, sizeof(chip->kdata));
+		get_rtc_time(&rtc_sec);
+		chip->kdata.fifo_time = (u32)rtc_sec;
 		chip->kdata.param[QG_GOOD_OCV_UV].data = ocv_uv;
 		chip->kdata.param[QG_GOOD_OCV_UV].valid = true;
 		chip->suspend_data = false;
